@@ -29,23 +29,34 @@
             height: 100%;
         }
 
-        /* CONFIGURAÇÃO PARA FORÇAR TELA CHEIA NA VERTICAL */
+        /* ===================================================
+           CSS CORRIGIDO PARA MODO VERTICAL (TV EM PÉ)
+        =================================================== */
+        
+        /* Centraliza perfeitamente o container antes de girar */
         .modo-vertical #player-container {
-            transform: rotate(90deg);
-            transform-origin: center;
-            /* Inverte as dimensões base para a rotação */
-            width: 100vh;
-            height: 100vw;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100vh;  /* Inverte largura pela altura da TV */
+            height: 100vw; /* Inverte altura pela largura da TV */
+            transform: translate(-50%, -50%) rotate(90deg);
+            transform-origin: center center;
         }
 
-        /* Força o iframe interno do YouTube a ignorar as proporções 16:9 e esticar */
-        .modo-vertical #player {
+        /* OPÇÃO: COVER (Preenche 100% da TV em pé, esticando/cortando as bordas) */
+        .modo-vertical.modo-cover #player {
+            width: 177.78vh !important; /* Proporção matemática 16:9 invertida */
+            height: 100vh !important;
+            max-width: none !important;
+        }
+
+        /* OPÇÃO: CONTAIN (Mostra o vídeo horizontal completo sem cortes, gerando barras) */
+        .modo-vertical.modo-contain #player {
             width: 100% !important;
             height: 100% !important;
-            object-fit: cover !important; /* Corta as laterais se necessário para preencher tudo */
         }
 
-        /* Ajusta o texto de informações para girar junto e ficar no topo correto da TV em pé */
         #msg {
             position: absolute;
             top: 10px;
@@ -57,14 +68,6 @@
             padding: 6px 12px;
             border-radius: 5px;
             pointer-events: none;
-        }
-
-        .modo-vertical #msg {
-            /* Fixa a mensagem na rotação correta da tela vertical */
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            transform: none; 
         }
     </style>
 </head>
@@ -84,12 +87,20 @@
         const LOGIN_PATH = `${BASE_URL}/login`;
         const VIDEOS_PATH = `${BASE_URL}/AGPDEV/videos_painel`;
 
+        // Captura das variáveis da URL
         const urlParams = new URLSearchParams(window.location.search);
         const tipoPainel = urlParams.get('tipo') || ''; 
         const ehVertical = urlParams.get('vertical') === 'true';
+        const modo = urlParams.get('modo') || 'contain'; // Padrão 'contain' se não enviado
 
+        // Aplica as classes corretas no body para ativar o CSS correspondente
         if (ehVertical) {
             document.body.classList.add('modo-vertical');
+            if (modo === 'cover') {
+                document.body.classList.add('modo-cover');
+            } else {
+                document.body.classList.add('modo-contain');
+            }
         }
 
         let playlist = [];
@@ -119,18 +130,13 @@
                 });
 
                 const token = loginRes.data.token;
-                const config = { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                };
+                const config = { headers: { 'Authorization': `Bearer ${token}` } };
 
                 const response = await axios.get(VIDEOS_PATH, config);
                 const dadosVideos = Array.isArray(response.data) ? response.data : (response.data.dados || []);
 
                 const videosFiltrados = dadosVideos
-                    .filter(video => {
-                        return video.tipo && 
-                               video.tipo.trim().toUpperCase() === tipoPainel.trim().toUpperCase();
-                    })
+                    .filter(video => video.tipo && video.tipo.trim().toUpperCase() === tipoPainel.trim().toUpperCase())
                     .sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
 
                 playlist = videosFiltrados.map(video => extrairVideoId(video.url));
