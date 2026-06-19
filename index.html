@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Sinalização Digital - TV Corporativa</title>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #player-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #player {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Estilo para TVs na Vertical (em pé) */
+        .modo-vertical #player-container {
+            /* Caso sua TV não rotacione a tela nativamente pelo sistema operacional, 
+               descomente as duas linhas abaixo para forçar o CSS a girar o vídeo */
+            /* transform: rotate(90deg); */
+            /* transform-origin: center; */
+        }
+
+        #msg {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 12px;
+            z-index: 9999;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="msg">Autenticando e carregando dados do painel...</div>
+
+    <div id="player-container">
+        <div id="player"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <script src="https://www.youtube.com/iframe_api"></script>
+
+    <script>
+        // Configurações da API fornecidas
+        const BASE_URL = "https://agpapi-serverless-657773645743.us-central1.run.app";
+        const LOGIN_PATH = `${BASE_URL}/login`;
+        const VIDEOS_PATH = `${BASE_URL}/AGPDEV/videos_painel`;
+
+        // Captura os parâmetros da URL da TV (?tipo=PAINELJLR1&vertical=true)
+        const urlParams = new URLSearchParams(window.location.search);
+        const tipoPainel = urlParams.get('tipo') || ''; 
+        const ehVertical = urlParams.get('vertical') === 'true';
+
+        // Aplica classe vertical se o parâmetro estiver na URL
+        if (ehVertical) {
+            document.body.classList.add('modo-vertical');
+        }
+
+        let playlist = [];
+        let indice = 0;
+        let player;
+        const msg = document.getElementById('msg');
+
+        // Extrai o ID de 11 caracteres do YouTube se a URL vier completa do banco
+        function extrairVideoId(url) {
+            if (!url) return '';
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : url;
+        }
+
+        // 1. AUTENTICAÇÃO E BUSCA DOS VÍDEOS NA API
+        async function carregarVideosDaAPI() {
+            try {
+                if (!tipoPainel) {
+                    msg.innerHTML = "Erro: Defina o parâmetro ?tipo=NOME na URL da TV.";
+                    return;
+                }
+
+                msg.innerHTML = `Conectando ao painel: ${tipoPainel.toUpperCase()}...`;
+                
+                // Realiza o Login
+                const loginRes = await axios.post(LOGIN_PATH, { 
+                    usuario: "Triade", 
+                    senha: "Agp_#2026!Db_v7Z9@Mtx" 
+                });
+
+                const token = loginRes.data.token;
+                const config = { 
+                    headers: { 'Authorization': `Bearer ${token}` } 
+                };
+
+                // Busca a lista de vídeos
+                const response = await axios.get(VIDEOS_PATH, config);
+                
+                // Proteção: Garante o acesso à lista mesmo se a resposta vier envelopada
+                const dadosVideos = Array.isArray(response.data) ? response.data : (response.data.dados || []);
+
+                // Filtra ignorando espaços e diferenças entre maiúsculas/minúsculas
+                const videosFiltrados = dadosVideos
+                    .filter(video => {
+                        return video.tipo && 
+                               video.tipo.trim().toUpperCase() === tipoPainel.trim().toUpperCase();
+                    })
+                    .sort((a, b) => (a.ordem || 0) - (b.ordem || 0)); // Organiza pela coluna 'ordem'
+
+                // Converte as URLs do banco em IDs limpos do YouTube
+                playlist = videosFiltrados.map(video => extrairVideoId(video.url));
+
+                if (playlist.length === 0) {
+                    msg.innerHTML = `Nenhum vídeo encontrado para o tipo: "${tipoPainel.toUpperCase()}"`;
+                    return;
+                }
+
+                // Tudo certo! Inicializa o player do YouTube
+                inicializarPlayerYouTube();
+
+            } catch (error) {
+                console.error("Erro na integração:", error);
+                msg.innerHTML = "Erro ao conectar com o banco de dados da API.";
+            }
+        }
+
+        // 2. INICIALIZAÇÃO DO PLAYER DO YOUTUBE
+        function inicializarPlayerYouTube() {
+            // Se o script global do YouTube ainda não estiver pronto, espera e tenta novamente
+            if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
+                setTimeout(inicializarPlayerYouTube, 500);
+                return;
+            }
+
+            player = new YT.Player('player', {
+                videoId: playlist[indice],
+                playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    modestbranding: 1,
+                    rel: 0,
+                    fs: 0,
+                    iv_load_policy: 3,
+                    mute: 1 // Necessário! Navegadores bloqueiam autoplay com áudio sem clique prévio
+                },
+                events: {
+                    'onReady': iniciarVideo,
+                    'onStateChange': trocarVideo
+                }
+            });
+        }
+
+        function iniciarVideo(event) {
+            event.target.playVideo();
+            atualizarMsg();
+        }
+
+        function trocarVideo(event) {
+            // Quando o vídeo atual chega ao fim (fim = 0 ou YT.PlayerState.ENDED)
+            if (event.data === 0) {
+                indice++;
+
+                // Se chegou ao fim da lista, volta para o primeiro vídeo
+                if (indice >= playlist.length) {
+                    indice = 0;
+                }
+
+                atualizarMsg();
+                player.loadVideoById(playlist[indice]);
+            }
+        }
+
+        function atualizarMsg() {
+            msg.innerHTML = `Painel: ${tipoPainel.toUpperCase()} | Vídeo ${indice + 1} de ${playlist.length}`;
+        }
+
+        // Executa o fluxo assim que a página abre
+        carregarVideosDaAPI();
+    </script>
+
+</body>
+</html>
