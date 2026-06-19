@@ -30,10 +30,13 @@
 
         /* Estilo para TVs na Vertical (em pé) */
         .modo-vertical #player-container {
-            /* Caso sua TV não rotacione a tela nativamente pelo sistema operacional, 
-               descomente as duas linhas abaixo para forçar o CSS a girar o vídeo */
-            /* transform: rotate(90deg); */
-            /* transform-origin: center; */
+            /* Ativa a rotação do player */
+            transform: rotate(90deg);
+            transform-origin: center;
+            
+            /* Inverte as dimensões para preencher a tela após girar */
+            width: 100vh;
+            height: 100vw;
         }
 
         #msg {
@@ -60,7 +63,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    
     <script src="https://www.youtube.com/iframe_api"></script>
 
     <script>
