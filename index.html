@@ -90,8 +90,12 @@
         // Captura das variáveis da URL
         const urlParams = new URLSearchParams(window.location.search);
         const tipoPainel = urlParams.get('tipo') || ''; 
-        const ehVertical = urlParams.get('vertical') === 'true';
-        const modo = urlParams.get('modo') || 'contain'; // Padrão 'contain' se não enviado
+        
+        // MODIFICADO: Se não for especificado 'vertical=false', o padrão agora será TRUE (Vertical)
+        const ehVertical = urlParams.get('vertical') !== 'false';
+        
+        // MODIFICADO: Se não for especificado o modo, o padrão agora será 'cover' (Preencher a tela)
+        const modo = urlParams.get('modo') || 'cover'; 
 
         // Aplica as classes corretas no body para ativar o CSS correspondente
         if (ehVertical) {
